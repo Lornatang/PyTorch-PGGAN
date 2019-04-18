@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
-# from torch.optim.lr_scheduler import StepLR
-import sys, os, time
-sys.path.append('utils')
-sys.path.append('models')
+import os
+import time
 from utils.data import CelebA, RandomNoiseGenerator
 from models.model import Generator, Discriminator
 import argparse
@@ -13,7 +10,8 @@ import numpy as np
 from scipy.misc import imsave
 from utils.logger import Logger
 
-class PGGAN():
+
+class PGGAN(object):
     def __init__(self, G, D, data, noise, opts):
         self.G = G
         self.D = D
@@ -26,13 +24,13 @@ class PGGAN():
         self.use_cuda = len(gpu) > 0
         os.environ['CUDA_VISIBLE_DEVICES'] = gpu
 
-        self.bs_map = {2**R: self.get_bs(2**R) for R in range(2, 11)} # batch size map keyed by resolution_level
+        self.bs_map = {2**R: self.get_bs(2**R) for R in range(2, 11)}  # batch size map keyed by resolution_level
         self.rows_map = {32: 8, 16: 4, 8: 4, 4: 2, 2: 2}
 
         self.restore_model()
 
         # save opts
-        with open(os.path.join(self.opts['exp_dir'], self.time, 'options_%s.txt'%self.current_time), 'w') as f:
+        with open(os.path.join(self.opts['exp_dir'], self.time, 'options_%s.txt' % self.current_time), 'w') as f:
             for k, v in self.opts.items():
                 print('%s: %s' % (k, v), file=f)
             print('batch_size_map: %s' % self.bs_map, file=f)
@@ -51,7 +49,7 @@ class PGGAN():
             self.opts['ckpt_dir'] = os.path.join(self.opts['exp_dir'], self.current_time, 'ckpts')
             os.makedirs(self.opts['sample_dir'])
             os.makedirs(self.opts['ckpt_dir'])
-            return 
+            return
         else:
             pattern = which_file.split('-')
             self._from_resol = int(pattern[0].split('x')[0])
@@ -64,8 +62,8 @@ class PGGAN():
             self.opts['ckpt_dir'] = os.path.join(exp_dir, 'ckpts')
             assert os.path.exists(self.opts['sample_dir']) and os.path.exists(self.opts['ckpt_dir'])
 
-            G_model = os.path.join(self.opts['ckpt_dir'], which_file+'-G.pth')
-            D_model = os.path.join(self.opts['ckpt_dir'], which_file+'-D.pth')
+            G_model = os.path.join(self.opts['ckpt_dir'], which_file + '-G.pth')
+            D_model = os.path.join(self.opts['ckpt_dir'], which_file + '-D.pth')
             assert os.path.exists(G_model) and os.path.exists(D_model)
             self.G.load_state_dict(torch.load(G_model))
             self.D.load_state_dict(torch.load(D_model))
@@ -75,9 +73,9 @@ class PGGAN():
     def get_bs(self, resolution):
         R = int(np.log2(resolution))
         if R < 7:
-            bs = 32 / 2**(max(0, R-4))
+            bs = 32 / 2**(max(0, R - 4))
         else:
-            bs = 8 / 2**(min(2, R-7))
+            bs = 8 / 2**(min(2, R - 7))
         return int(bs)
 
     def register_on_gpu(self):
@@ -88,15 +86,15 @@ class PGGAN():
     def create_optimizer(self):
         self.optim_G = optim.Adam(self.G.parameters(), lr=self.opts['g_lr_max'], betas=(self.opts['beta1'], self.opts['beta2']))
         self.optim_D = optim.Adam(self.D.parameters(), lr=self.opts['d_lr_max'], betas=(self.opts['beta1'], self.opts['beta2']))
-        
+
     def create_criterion(self):
         # w is for gan
         if self.opts['gan'] == 'lsgan':
-            self.adv_criterion = lambda p,t,w: torch.mean((p-t)**2)  # sigmoid is applied here
+            self.adv_criterion = lambda p, t, w: torch.mean((p - t)**2)  # sigmoid is applied here
         elif self.opts['gan'] == 'wgan_gp':
-            self.adv_criterion = lambda p,t,w: (-2*t+1) * torch.mean(p)
+            self.adv_criterion = lambda p, t, w: (-2 * t + 1) * torch.mean(p)
         elif self.opts['gan'] == 'gan':
-            self.adv_criterion = lambda p,t,w: -w*(torch.mean(t*torch.log(p+1e-8)) + torch.mean((1-t)*torch.log(1-p+1e-8)))
+            self.adv_criterion = lambda p, t, w: -w * (torch.mean(t * torch.log(p + 1e-8)) + torch.mean((1 - t) * torch.log(1 - p + 1e-8)))
         else:
             raise ValueError('Invalid/Unsupported GAN: %s.' % self.opts['gan'])
 
@@ -133,7 +131,7 @@ class PGGAN():
         if epoch < rampup_length:
             p = max(0.0, float(epoch)) / float(rampup_length)
             p = 1.0 - p
-            return np.exp(-p*p*5.0)
+            return np.exp(-p * p * 5.0)
         else:
             return 1.0
 
@@ -145,6 +143,7 @@ class PGGAN():
 
     '''Update Learning rate
     '''
+
     def update_lr(self, cur_nimg):
         for param_group in self.optim_G.param_groups:
             lrate_coef = self._rampup(cur_nimg / 1000.0, self.opts['rampup_kimg'])
@@ -200,7 +199,7 @@ class PGGAN():
 
     def forward_G(self, cur_level):
         self.d_fake = self.D(self.fake, cur_level=cur_level)
-    
+
     def forward_D(self, cur_level, detach=True):
         self.fake = self.G(self.z, cur_level=cur_level)
         strength = self.compute_noise_strength()
@@ -229,7 +228,7 @@ class PGGAN():
 
     def tensorboard(self, it, num_it, phase, resol, samples):
         # (1) Log the scalar values
-        prefix = str(resol)+'/'+phase+'/'
+        prefix = str(resol) + '/' + phase + '/'
         info = {prefix + 'G_loss': self.g_loss,
                 prefix + 'G_adv_loss': self.g_adv_loss,
                 prefix + 'G_add_loss': self.g_add_loss,
@@ -245,9 +244,9 @@ class PGGAN():
         # (2) Log values and gradients of the parameters (histogram)
         for tag, value in self.G.named_parameters():
             tag = tag.replace('.', '/')
-            self.logger.histo_summary('G/' + prefix +tag, self._var2numpy(value), it)
+            self.logger.histo_summary('G/' + prefix + tag, self._var2numpy(value), it)
             if value.grad is not None:
-                self.logger.histo_summary('G/' + prefix +tag + '/grad', self._var2numpy(value.grad), it)
+                self.logger.histo_summary('G/' + prefix + tag + '/grad', self._var2numpy(value.grad), it)
 
         for tag, value in self.D.named_parameters():
             tag = tag.replace('.', '/')
@@ -263,14 +262,14 @@ class PGGAN():
 
     def train_phase(self, R, phase, batch_size, cur_nimg, from_it, total_it):
         assert total_it >= from_it
-        resol = 2 ** (R+1)
- 
+        resol = 2 ** (R + 1)
+
         for it in range(from_it, total_it):
             if phase == 'stabilize':
                 cur_level = R
             else:
-                cur_level = R + total_it/float(from_it)
-            cur_resol = 2 ** int(np.ceil(cur_level+1))
+                cur_level = R + total_it / float(from_it)
+            cur_resol = 2 ** int(np.ceil(cur_level + 1))
 
             # get a batch noise and real images
             z = self.noise(batch_size)
@@ -297,7 +296,7 @@ class PGGAN():
 
             # ===generate sample images===
             samples = []
-            if (it % self.opts['sample_freq'] == 0) or it == total_it-1:
+            if (it % self.opts['sample_freq'] == 0) or it == total_it - 1:
                 samples = self.sample()
                 imsave(os.path.join(self.opts['sample_dir'],
                                     '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), samples)
@@ -307,9 +306,9 @@ class PGGAN():
                 self.tensorboard(it, total_it, phase, cur_resol, samples)
 
             # ===save model===
-            if (it % self.opts['save_freq'] == 0 and it > 0) or it == total_it-1:
+            if (it % self.opts['save_freq'] == 0 and it > 0) or it == total_it - 1:
                 self.save(os.path.join(self.opts['ckpt_dir'], '%dx%d-%s-%s' % (cur_resol, cur_resol, phase, str(it).zfill(6))))
-        
+
     def train(self):
         # prepare
         self.create_optimizer()
@@ -323,11 +322,11 @@ class PGGAN():
         train_kimg = int(self.opts['train_kimg'] * 1000)
         transition_kimg = int(self.opts['transition_kimg'] * 1000)
 
-        for R in range(from_level-1, to_level):
-            batch_size = self.bs_map[2 ** (R+1)]
+        for R in range(from_level - 1, to_level):
+            batch_size = self.bs_map[2 ** (R + 1)]
 
-            phases = {'stabilize':[0, train_kimg//batch_size], 'fade_in':[train_kimg//batch_size+1, (transition_kimg+train_kimg)//batch_size]}
-            if self.is_restored and R == from_level-1:
+            phases = {'stabilize': [0, train_kimg // batch_size], 'fade_in': [train_kimg // batch_size + 1, (transition_kimg + train_kimg) // batch_size]}
+            if self.is_restored and R == from_level - 1:
                 phases[self._phase][0] = self._epoch + 1
                 if self._phase == 'fade_in':
                     del phases['stabilize']
@@ -335,7 +334,7 @@ class PGGAN():
             for phase in ['stabilize', 'fade_in']:
                 if phase in phases:
                     _range = phases[phase]
-                    self.train_phase(R, phase, batch_size, _range[0]*batch_size, _range[0], _range[1])
+                    self.train_phase(R, phase, batch_size, _range[0] * batch_size, _range[0], _range[1])
 
     def sample(self):
         batch_size = self.z.size(0)
@@ -369,6 +368,7 @@ class PGGAN():
         torch.save(self.G.state_dict(), g_file)
         torch.save(self.D.state_dict(), d_file)
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', default='', type=str, help='gpu(s) to use.')
@@ -398,7 +398,7 @@ if __name__ == '__main__':
     # TODO: support conditional inputs
 
     args = parser.parse_args()
-    opts = {k:v for k,v in args._get_kwargs()}
+    opts = {k: v for k, v in args._get_kwargs()}
 
     # Dimensionality of the latent vector.
     latent_size = 512
