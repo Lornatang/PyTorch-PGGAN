@@ -25,7 +25,7 @@ class PixelNormLayer(nn.Module):
         return x / torch.sqrt(torch.mean(x ** 2, dim=1, keepdim=True) + 1e-8)
 
     def __repr__(self):
-        return self.__class__.__name__ + '(eps = %s)' % (self.eps)
+        return self.__class__.__name__ + '(eps = %s)' % self.eps
 
 
 class WScaleLayer(nn.Module):
